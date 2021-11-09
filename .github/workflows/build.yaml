@@ -64,6 +64,19 @@ jobs:
       - name: Unshallow
         run: git fetch --prune --unshallow
 
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Cache Go modules
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
         id: buildx
@@ -72,7 +85,7 @@ jobs:
 
       - name: docker images build
         run: |
-          make docker-build-initContainer
+          make build-initContainer
 
   build-kyverno:
     runs-on: ubuntu-latest
@@ -84,6 +97,19 @@ jobs:
       - name: Unshallow
         run: git fetch --prune --unshallow
 
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Cache Go modules
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
         id: buildx
@@ -92,7 +118,7 @@ jobs:
 
       - name: docker images build
         run: |
-          make docker-build-kyverno
+          make build-kyverno
 
       - name: Trivy Scan Image
         uses: aquasecurity/trivy-action@master
@@ -114,6 +140,19 @@ jobs:
       - name: Unshallow
         run: git fetch --prune --unshallow
 
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: 1.16
+
+      - name: Cache Go modules
+        uses: actions/cache@v1
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
         id: buildx
@@ -122,7 +161,7 @@ jobs:
 
       - name: docker images build
         run: |
-          make docker-build-cli
+          make build-cli
 
   tests:
     runs-on: ubuntu-latest
