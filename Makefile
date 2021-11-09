@@ -41,12 +41,6 @@ unused-package-check:
 		echo "go mod tidy checking failed!"; echo "$${tidy}"; echo; \
 	fi
 
-.PHONY: build-all-amd64
-build-all-amd64:
-	ARCH=amd64 $(MAKE) go-build-initContainer docker-build-initContainer
-	ARCH=amd64 $(MAKE) go-build-kyverno docker-build-kyverno
-	ARCH=amd64 $(MAKE) go-build-cli docker-build-cli
-
 ##################################
 # SIGNATURE CONTAINER
 ##################################
@@ -185,9 +179,11 @@ docker-push-cli: docker-buildx-builder
 ##################################
 docker-publish-all: docker-buildx-builder docker-publish-initContainer docker-publish-kyverno docker-publish-cli
 
-docker-build-all: docker-buildx-builder docker-build-initContainer docker-build-kyverno docker-build-cli
-
-docker-build-all-amd64: docker-buildx-builder docker-build-initContainer-amd64 docker-build-kyverno-amd64 docker-build-cli-amd64
+.PHONY: build-all-amd64
+build-all-amd64:
+	ARCH=amd64 $(MAKE) go-build-initContainer docker-build-initContainer
+	ARCH=amd64 $(MAKE) go-build-kyverno docker-build-kyverno
+	ARCH=amd64 $(MAKE) go-build-cli docker-build-cli
 
 ##################################
 # Create e2e Infrastruture
