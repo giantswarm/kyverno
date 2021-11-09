@@ -45,7 +45,7 @@ unused-package-check:
 build-all:
 	$(MAKE) build-initContainer
 	$(MAKE) build-kyverno
-	$(MAKE) build-cmd
+	$(MAKE) build-cli
 
 ##################################
 # SIGNATURE CONTAINER
