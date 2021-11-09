@@ -102,7 +102,7 @@ push-initContainer: ## Build and push docker images for initContainer
 
 .PHONY: go-build-initContainer
 go-build-initContainer:
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
 
 .PHONY: docker-build-initContainer
 docker-build-initContainer: docker-buildx-builder
@@ -130,7 +130,7 @@ push-kyverno: ## Build and push docker images for kyverno
 
 .PHONY: go-build-kyverno
 go-build-kyverno:
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
@@ -172,7 +172,7 @@ push-cli: ## Build and push docker images for the kyverno cli
 
 .PHONY: go-build-cli
 go-build-cli:
-	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
 
 .PHONY: docker-build-cli
 docker-build-cli: docker-buildx-builder
