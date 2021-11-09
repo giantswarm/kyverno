@@ -23,6 +23,7 @@ monitor_timeout() {
   kubectl --namespace "${namespace}" get pods
   docker images | grep "kyverno"
   kubectl --namespace "${namespace}" describe deployment "${deployment}"
+  kubectl --namespace "${namespace}" logs -l app=kyverno -c kyverno-pre
   kubectl --namespace "${namespace}" logs -l app=kyverno
   kill "${wait_pid}"
 }
