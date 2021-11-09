@@ -259,7 +259,7 @@ test-e2e-local:
 
 #Test TestCmd Policy
 test-cmd: go-build-cli
-	$(PWD)/$(CLI_PATH)/kyverno test https://github.com/kyverno/policies/main@05edf3705c2faa9ef89d5a5b2aa52729585c73b2
+	$(PWD)/$(CLI_PATH)/kyverno test https://github.com/kyverno/policies/main
 	$(PWD)/$(CLI_PATH)/kyverno test ./test/cli/test-mutate
 	$(PWD)/$(CLI_PATH)/kyverno test ./test/cli/test
 	$(PWD)/$(CLI_PATH)/kyverno test ./test/cli/test-fail/missing-policy && exit 1 || exit 0
