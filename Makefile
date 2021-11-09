@@ -41,6 +41,12 @@ unused-package-check:
 		echo "go mod tidy checking failed!"; echo "$${tidy}"; echo; \
 	fi
 
+.PHONY: build-all
+build-all:
+	$(MAKE) build-initContainer
+	$(MAKE) build-kyverno
+	$(MAKE) build-cmd
+
 ##################################
 # SIGNATURE CONTAINER
 ##################################

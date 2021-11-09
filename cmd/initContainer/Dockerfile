@@ -1,4 +1,4 @@
-FROM scratch
+FROM gcr.io/distroless/static
 
 LABEL maintainer="Kyverno"
 
