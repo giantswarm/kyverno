@@ -41,11 +41,11 @@ unused-package-check:
 		echo "go mod tidy checking failed!"; echo "$${tidy}"; echo; \
 	fi
 
-.PHONY: build-all
-build-all:
-	$(MAKE) build-initContainer
-	$(MAKE) build-kyverno
-	$(MAKE) build-cli
+.PHONY: build-all-amd64
+build-all-amd64:
+	ARCH=amd64 $(MAKE) go-build-initContainer docker-build-initContainer
+	ARCH=amd64 $(MAKE) go-build-kyverno docker-build-kyverno
+	ARCH=amd64 $(MAKE) go-build-cli docker-build-cli
 
 ##################################
 # SIGNATURE CONTAINER
