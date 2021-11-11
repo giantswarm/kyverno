@@ -96,7 +96,7 @@ push-initContainer: ## Build and push docker images for initContainer
 
 .PHONY: go-build-initContainer
 go-build-initContainer:
-	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
 
 .PHONY: docker-build-initContainer
 docker-build-initContainer: docker-buildx-builder
@@ -124,7 +124,7 @@ push-kyverno: ## Build and push docker images for kyverno
 
 .PHONY: go-build-kyverno
 go-build-kyverno:
-	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
@@ -135,10 +135,10 @@ docker-push-kyverno: docker-buildx-builder
 	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(KYVERNO_PATH)
 
 kyverno: fmt vet
-	GOOS=$(GOOS) go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
+	GOOS=$(GOOS) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 
 docker-build-kyverno-local:
-	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
+	CGO_ENABLED=0 GOOS=linux CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 	@docker build -f $(PWD)/$(KYVERNO_PATH)/localDockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(PWD)/$(KYVERNO_PATH)
 	@docker tag $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(REPO)/$(KYVERNO_IMAGE):latest
 
@@ -166,7 +166,7 @@ push-cli: ## Build and push docker images for the kyverno cli
 
 .PHONY: go-build-cli
 go-build-cli:
-	GOOS=$(GOOS) GOARCH=$(ARCH) go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
 
 .PHONY: docker-build-cli
 docker-build-cli: docker-buildx-builder
