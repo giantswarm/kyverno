@@ -12,7 +12,7 @@ CONTROLLER_GEN_REQ_VERSION := v0.4.0
 VERSION ?= $(shell git describe --match "v[0-9]*")
 
 REGISTRY?=ghcr.io
-REPO=$(REGISTRY)/kyverno
+REPO=$(REGISTRY)/giantswarm
 IMAGE_TAG?=$(GIT_VERSION)
 GOOS ?= $(shell go env GOOS)
 ifeq ($(GOOS), darwin)
@@ -97,7 +97,7 @@ docker-publish-initContainer: docker-buildx-builder docker-build-initContainer d
 docker-build-initContainer: docker-buildx-builder
 	@docker buildx build --file $(PWD)/$(INITC_PATH)/Dockerfile --progress plane --platform linux/arm64,linux/amd64 --tag $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG) . --build-arg LD_FLAGS=$(LD_FLAGS)
 
-docker-build-initContainer-amd64: 
+docker-build-initContainer-amd64:
 	@docker build -f $(PWD)/$(INITC_PATH)/Dockerfile -t $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG) . --build-arg LD_FLAGS=$(LD_FLAGS) --build-arg TARGETPLATFORM="linux/amd64"
 
 docker-push-initContainer: docker-buildx-builder
