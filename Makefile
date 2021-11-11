@@ -100,7 +100,7 @@ go-build-initContainer:
 
 .PHONY: docker-build-initContainer
 docker-build-initContainer: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" $(PWD)/$(INITC_PATH)
+	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(INITC_PATH)
 
 .PHONY: docker-push-initContainer
 docker-push-initContainer: docker-buildx-builder
@@ -128,7 +128,7 @@ go-build-kyverno:
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" $(PWD)/$(KYVERNO_PATH)
+	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(KYVERNO_PATH)
 
 .PHONY: docker-push-kyverno
 docker-push-kyverno: docker-buildx-builder
@@ -170,7 +170,7 @@ go-build-cli:
 
 .PHONY: docker-build-cli
 docker-build-cli: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" $(PWD)/$(CLI_PATH)
+	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(CLI_PATH)
 
 .PHONY: docker-push-cli
 docker-push-cli: docker-buildx-builder
