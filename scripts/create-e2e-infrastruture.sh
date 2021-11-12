@@ -10,13 +10,13 @@ chmod a+x $pwd/kind
 
 ## Create Kind Cluster
 $pwd/kind create cluster
-$pwd/kind load docker-image ghcr.io/kyverno/kyverno:$hash
-$pwd/kind load docker-image ghcr.io/kyverno/kyvernopre:$hash
+$pwd/kind load docker-image ghcr.io/giantswarm/kyverno:$hash
+$pwd/kind load docker-image ghcr.io/giantswarm/kyvernopre:$hash
 
 pwd=$(pwd)
 cd $pwd/config
 echo "Installing kustomize"
 curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"  | bash
-kustomize edit set image ghcr.io/kyverno/kyverno:$hash
-kustomize edit set image ghcr.io/kyverno/kyvernopre:$hash
+kustomize edit set image ghcr.io/giantswarm/kyverno:$hash
+kustomize edit set image ghcr.io/giantswarm/kyvernopre:$hash
 kustomize build $pwd/config/ -o $pwd/config/install.yaml
