@@ -62,11 +62,6 @@ jobs:
           make docker-publish-sigs
           make push-initContainer
 
-      - name: Sign image
-        run: |
-          export COSIGN_REPOSITORY=ghcr.io/kyverno/signatures
-          echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY_PASSWORD }}" | cosign sign -key <(echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY }}") ghcr.io/kyverno/kyvernopre:${KYVERNO_VERSION}
-
   release-kyverno:
     runs-on: ubuntu-latest
     steps:
@@ -99,8 +94,12 @@ jobs:
           go-version: 1.16
       - uses: creekorful/goreportcard-action@v1.0
 
-      - name: login to GitHub Container Registry
-        run: echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+      - name: Log in to the Container registry
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -127,22 +126,6 @@ jobs:
         run: |
           make docker-publish-sbom
           make push-kyverno
-
-      - name: Sign image and SBOM
-        run: |
-          export COSIGN_REPOSITORY=ghcr.io/kyverno/signatures
-          echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY_PASSWORD }}" | cosign sign -key <(echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY }}") ghcr.io/kyverno/kyverno:${KYVERNO_VERSION}
-          cosign attach sbom -sbom ./*-bom.cdx.json -type cyclonedx ghcr.io/kyverno/sbom:latest
-
-      - name: Trivy Scan Image
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: 'ghcr.io/kyverno/kyverno:latest'
-          format: 'table'
-          exit-code: '1'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
 
   release-kyverno-cli:
     runs-on: ubuntu-latest
@@ -176,8 +159,12 @@ jobs:
           go-version: 1.16
       - uses: creekorful/goreportcard-action@v1.0
 
-      - name: login to GitHub Container Registry
-        run: echo ${{ secrets.CR_PAT }} | docker login ghcr.io -u ${{ github.repository_owner }} --password-stdin
+      - name: Log in to the Container registry
+        uses: docker/login-action@f054a8b539a109f9f41c372932f1ae047eff08c9
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
@@ -192,11 +179,6 @@ jobs:
       - name :  docker images publish
         run: |
           make push-cli
-
-      - name: Sign image
-        run: |
-          export COSIGN_REPOSITORY=ghcr.io/kyverno/signatures
-          echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY_PASSWORD }}" | cosign sign -key <(echo -n "${{ secrets.KYVERNO_COSIGN_PRIVATE_KEY }}") ghcr.io/kyverno/kyverno-cli:${KYVERNO_VERSION}
 
   create-release:
     runs-on: ubuntu-latest
