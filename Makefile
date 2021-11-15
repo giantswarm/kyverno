@@ -123,8 +123,8 @@ build-kyverno: ## Build docker images for kyverno
 
 .PHONY: push-kyverno
 push-kyverno: ## Build and push docker images for kyverno
-	ARCH=amd64 $(MAKE) go-build-kyverno
-	ARCH=arm64 $(MAKE) go-build-kyverno
+	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-kyverno
+	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-kyverno
 	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-push-kyverno
 
 .PHONY: go-build-kyverno
@@ -169,7 +169,7 @@ build-cli: ## Build docker images for the kyverno cli
 push-cli: ## Build and push docker images for the kyverno cli
 	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-cli
 	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-cli
-	ARCH=linux/amd64,linux/arm64 docker-push-cli
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-push-cli
 
 .PHONY: go-build-cli
 go-build-cli:
