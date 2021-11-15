@@ -2,7 +2,7 @@ FROM gcr.io/distroless/static
 
 ARG TARGETPLATFORM
 
-ENV ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
+RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
 
 LABEL maintainer="Kyverno"
 
