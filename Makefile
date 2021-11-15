@@ -15,6 +15,7 @@ REGISTRY?=ghcr.io
 REPO=$(REGISTRY)/giantswarm
 # Golang related defaults
 GOOS ?= $(shell go env GOOS)
+TARGETPLATFORM ?= linux/amd64
 ifeq ($(GOOS), darwin)
 SED=gsed
 else
@@ -92,13 +93,13 @@ build-initContainer: ## Build docker images for initContainer
 
 .PHONY: push-initContainer
 push-initContainer: ## Build and push docker images for initContainer
-	ARCH=arm64 $(MAKE) go-build-initContainer
-	ARCH=amd64 $(MAKE) go-build-initContainer
+	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-initContainer
+	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-initContainer
 	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-push-initContainer
 
 .PHONY: go-build-initContainer
 go-build-initContainer:
-	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(INITC_PATH)/kyvernopre-$(ARCH) -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(INITC_PATH)/$(TARGETPLATFORM)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
 
 .PHONY: docker-build-initContainer
 docker-build-initContainer: docker-buildx-builder
