@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	gojmespath "github.com/jmespath/go-jmespath"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -46,6 +47,7 @@ var (
 	modulo                 = "modulo"
 	base64Decode           = "base64_decode"
 	base64Encode           = "base64_encode"
+	yamltojson             = "yaml_to_json"
 )
 
 const errorPrefix = "JMESPath function '%s': "
@@ -209,6 +211,13 @@ func getFunctions() []*gojmespath.FunctionEntry {
 				{Types: []JpType{JpString}},
 			},
 			Handler: jpBase64Encode,
+		},
+		{
+			Name: yamltojson,
+			Arguments: []ArgSpec{
+				{Types: []JpType{JpString}},
+			},
+			Handler: jpYamlToJson,
 		},
 	}
 
@@ -548,6 +557,20 @@ func jpBase64Encode(arguments []interface{}) (interface{}, error) {
 	}
 
 	return base64.StdEncoding.EncodeToString([]byte(str.String())), nil
+}
+
+func jpYamlToJson(arguments []interface{}) (interface{}, error) {
+	var err error
+	a, err := validateArg(yamltojson, arguments, 0, reflect.String)
+	if err != nil {
+		return nil, err
+	}
+	json, err := yaml.YAMLToJSON([]byte(a.String()))
+	if err != nil {
+		return nil, err
+	}
+
+	return string(json), nil
 }
 
 // InterfaceToString casts an interface to a string type
