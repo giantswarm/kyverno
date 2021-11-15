@@ -86,14 +86,15 @@ INITC_IMAGE := kyvernopre
 
 .PHONY: build-initContainer
 build-initContainer: ## Build docker images for initContainer
-	ARCH=amd64 $(MAKE) go-build-initContainer docker-build-initContainer
-	ARCH=arm64 $(MAKE) go-build-initContainer docker-build-initContainer
+	ARCH=amd64 $(MAKE) go-build-initContainer
+	ARCH=arm64 $(MAKE) go-build-initContainer
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-build-initContainer
 
 .PHONY: push-initContainer
 push-initContainer: ## Build and push docker images for initContainer
 	ARCH=arm64 $(MAKE) go-build-initContainer
 	ARCH=amd64 $(MAKE) go-build-initContainer
-	ARCH=linux/amd64,linuxarm64 $(MAKE) docker-push-initContainer
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-push-initContainer
 
 .PHONY: go-build-initContainer
 go-build-initContainer:
@@ -101,7 +102,7 @@ go-build-initContainer:
 
 .PHONY: docker-build-initContainer
 docker-build-initContainer: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(INITC_PATH)
+	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) --platform "$(ARCH)" --output type=docker $(PWD)/$(INITC_PATH)
 
 .PHONY: docker-push-initContainer
 docker-push-initContainer: docker-buildx-builder
