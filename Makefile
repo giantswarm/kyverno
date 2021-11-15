@@ -116,13 +116,15 @@ KYVERNO_IMAGE := kyverno
 
 .PHONY: build-kyverno
 build-kyverno: ## Build docker images for kyverno
-	ARCH=amd64 $(MAKE) go-build-kyverno docker-build-kyverno
-	ARCH=arm64 $(MAKE) go-build-kyverno docker-build-kyverno
+	ARCH=amd64 $(MAKE) go-build-kyverno
+	ARCH=arm64 $(MAKE) go-build-kyverno
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-build-kyverno
 
 .PHONY: push-kyverno
 push-kyverno: ## Build and push docker images for kyverno
-	ARCH=amd64 $(MAKE) go-build-kyverno docker-push-kyverno
-	ARCH=arm64 $(MAKE) go-build-kyverno docker-push-kyverno
+	ARCH=amd64 $(MAKE) go-build-kyverno
+	ARCH=arm64 $(MAKE) go-build-kyverno
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-push-kyverno
 
 .PHONY: go-build-kyverno
 go-build-kyverno:
@@ -130,11 +132,11 @@ go-build-kyverno:
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(KYVERNO_PATH)
+	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) --platform "$(ARCH)" --output type=docker $(PWD)/$(KYVERNO_PATH)
 
 .PHONY: docker-push-kyverno
 docker-push-kyverno: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(KYVERNO_PATH)
+	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_IMAGE):latest --platform "$(ARCH)" $(PWD)/$(KYVERNO_PATH)
 
 kyverno: fmt vet
 	GOOS=$(GOOS) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
