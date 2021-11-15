@@ -117,8 +117,8 @@ KYVERNO_IMAGE := kyverno
 
 .PHONY: build-kyverno
 build-kyverno: ## Build docker images for kyverno
-	ARCH=amd64 $(MAKE) go-build-kyverno
-	ARCH=arm64 $(MAKE) go-build-kyverno
+	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-kyverno
+	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-kyverno
 	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-build-kyverno
 
 .PHONY: push-kyverno
@@ -129,7 +129,7 @@ push-kyverno: ## Build and push docker images for kyverno
 
 .PHONY: go-build-kyverno
 go-build-kyverno:
-	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/$(TARGETPLATFORM)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
@@ -161,25 +161,27 @@ KYVERNO_CLI_IMAGE := kyverno-cli
 
 .PHONY: build-cli
 build-cli: ## Build docker images for the kyverno cli
-	ARCH=amd64 $(MAKE) go-build-cli docker-build-cli
-	ARCH=arm64 $(MAKE) go-build-cli docker-build-cli
+	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-cli
+	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-cli
+	ARCH=linux/amd64,linux/arm64 $(MAKE) docker-build-cli
 
 .PHONY: push-cli
 push-cli: ## Build and push docker images for the kyverno cli
-	ARCH=amd64 $(MAKE) go-build-cli docker-push-cli
-	ARCH=arm64 $(MAKE) go-build-cli docker-push-cli
+	ARCH=amd64 TARGETPLATFORM=linux/amd64 $(MAKE) go-build-cli
+	ARCH=arm64 TARGETPLATFORM=linux/arm64 $(MAKE) go-build-cli
+	ARCH=linux/amd64,linux/arm64 docker-push-cli
 
 .PHONY: go-build-cli
 go-build-cli:
-	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
+	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(CLI_PATH)/$(TARGETPLATFORM)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
 
 .PHONY: docker-build-cli
 docker-build-cli: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(CLI_PATH)
+	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "$(ARCH)" --output type=docker $(PWD)/$(CLI_PATH)
 
 .PHONY: docker-push-cli
 docker-push-cli: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_CLI_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(CLI_PATH)
+	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_CLI_IMAGE):latest --platform "$(ARCH)" $(PWD)/$(CLI_PATH)
 
 ##################################
 docker-publish-all: docker-buildx-builder docker-publish-initContainer docker-publish-kyverno docker-publish-cli
