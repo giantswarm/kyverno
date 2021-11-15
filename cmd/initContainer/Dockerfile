@@ -1,9 +1,12 @@
 FROM gcr.io/distroless/static
+
 ARG TARGETPLATFORM
-RUN export ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
+
+ENV ARCH=$(echo ${TARGETPLATFORM} | cut -d / -f2)
+
 LABEL maintainer="Kyverno"
 
-ADD ./kyvernopre-$ARCH /kyvernopre
+ADD ./kyvernopre-${ARCH} /kyvernopre
 
 USER 10001
 
