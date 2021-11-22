@@ -1106,7 +1106,8 @@ func validateRuleContext(rule kyverno.Rule) error {
 	ruleBytes, _ := json.Marshal(rule)
 	ruleString := strings.ReplaceAll(string(ruleBytes), " ", "")
 	for _, contextName := range contextNames {
-		if !strings.Contains(ruleString, fmt.Sprintf("{{"+contextName)) && !strings.Contains(ruleString, fmt.Sprintf("{{\\\""+contextName)) {
+		var containsVarRegex = regexp.MustCompile(`^.*{{.*` + contextName + `.*}}.*$`)
+		if !containsVarRegex.MatchString(ruleString) {
 			return fmt.Errorf("context variable `%s` is not used in the policy", contextName)
 		}
 	}
