@@ -570,7 +570,7 @@ func jpYamlToJson(arguments []interface{}) (interface{}, error) {
 		return nil, err
 	}
 
-	return string(json), nil
+	return json, nil
 }
 
 // InterfaceToString casts an interface to a string type
