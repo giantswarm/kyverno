@@ -225,9 +225,6 @@ func fetchConfigMap(logger logr.Logger, entry kyverno.ContextEntry, lister dynam
 
 	unstructuredObj := obj.DeepCopy().Object
 
-	// update the unstructuredObj["data"] to delimit and split the string value (containing "\n") with "\n"
-	unstructuredObj["data"] = parseMultilineBlockBody(unstructuredObj["data"].(map[string]interface{}))
-
 	// extract configmap data
 	contextData["data"] = unstructuredObj["data"]
 	contextData["metadata"] = unstructuredObj["metadata"]
@@ -264,5 +261,5 @@ func parseMultilineBlockBody(m map[string]interface{}) map[string]interface{} {
 
 // check for PEM header found in certs and public keys
 func pemFormat(s string) bool {
-	return strings.Contains(s, "-----BEGIN") || strings.Contains(s, "|-")
+	return strings.Contains(s, "-----BEGIN")
 }
