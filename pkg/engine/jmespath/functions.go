@@ -14,6 +14,7 @@ import (
 )
 
 var (
+	JpAny         = gojmespath.JpAny
 	JpObject      = gojmespath.JpObject
 	JpString      = gojmespath.JpString
 	JpNumber      = gojmespath.JpNumber
@@ -215,7 +216,7 @@ func getFunctions() []*gojmespath.FunctionEntry {
 		{
 			Name: yamltojson,
 			Arguments: []ArgSpec{
-				{Types: []JpType{JpString}},
+				{Types: []JpType{JpAny}},
 			},
 			Handler: jpYamlToJson,
 		},
@@ -561,11 +562,7 @@ func jpBase64Encode(arguments []interface{}) (interface{}, error) {
 
 func jpYamlToJson(arguments []interface{}) (interface{}, error) {
 	var err error
-	a, err := validateArg(yamltojson, arguments, 0, reflect.String)
-	if err != nil {
-		return nil, err
-	}
-	json, err := yaml.YAMLToJSON([]byte(a.String()))
+	json, err := yaml.YAMLToJSON(arguments[0].([]byte))
 	if err != nil {
 		return nil, err
 	}
