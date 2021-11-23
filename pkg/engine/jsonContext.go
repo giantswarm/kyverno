@@ -264,5 +264,5 @@ func parseMultilineBlockBody(m map[string]interface{}) map[string]interface{} {
 
 // check for PEM header found in certs and public keys
 func pemFormat(s string) bool {
-	return strings.Contains(s, "-----BEGIN")
+	return strings.Contains(s, "-----BEGIN") || strings.Contains(s, "|-")
 }
