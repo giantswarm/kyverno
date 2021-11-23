@@ -2,6 +2,7 @@ package jmespath
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -565,12 +566,18 @@ func jpYamlToJson(arguments []interface{}) (interface{}, error) {
 	if err != nil {
 		return nil, err
 	}
-	json, err := yaml.YAMLToJSON([]byte(a.String()))
+	js, err := yaml.YAMLToJSON([]byte(a.String()))
 	if err != nil {
 		return nil, err
 	}
 
-	return string(json), nil
+	var data interface{}
+	err = json.Unmarshal(js, &data)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
 
 // InterfaceToString casts an interface to a string type
