@@ -131,7 +131,6 @@ go-build-kyverno:
 
 .PHONY: docker-build-kyverno
 docker-build-kyverno: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(KYVERNO_PATH)
 
 .PHONY: docker-push-kyverno
 docker-push-kyverno: docker-buildx-builder
@@ -154,35 +153,6 @@ docker-push-kyverno-dev: docker-buildx-builder
 	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
 	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
 
-docker-get-kyverno-dev-digest:
-	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
-##################################
-# Generate Docs for types.go
-##################################
-generate-api-docs:
-	go run gen-crd-api-reference-docs -api-dir ./api -config docs/config.json -template-dir docs/template -out-file docs/crd/v1/index.html
-
-##################################
-# CLI
-##################################
-CLI_PATH := cmd/cli/kubectl-kyverno
-KYVERNO_CLI_IMAGE := kyverno-cli
-
-.PHONY: build-cli
-build-cli: ## Build docker images for the kyverno cli
-	ARCH=amd64 $(MAKE) go-build-cli docker-build-cli
-	ARCH=arm64 $(MAKE) go-build-cli docker-build-cli
-
-.PHONY: push-cli
-push-cli: ## Build and push docker images for the kyverno cli
-	ARCH=amd64 $(MAKE) go-build-cli docker-push-cli
-	ARCH=arm64 $(MAKE) go-build-cli docker-push-cli
-
-.PHONY: go-build-cli
-go-build-cli:
-	GOOS=$(GOOS) GOARCH=$(ARCH) CGO_ENABLED=0 go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
-
-.PHONY: docker-build-cli
 docker-build-cli: docker-buildx-builder
 	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(CLI_PATH)
 
