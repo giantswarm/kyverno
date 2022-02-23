@@ -5,6 +5,7 @@
 ##################################
 PWD := $(CURDIR)
 GIT_VERSION := $(shell git describe --match "v[0-9]*")
+GIT_VERSION_DEV := $(shell git describe --match "[0-9].[0-9]-dev*")
 GIT_BRANCH := $(shell git branch | grep \* | cut -d ' ' -f2)
 GIT_HASH := $(GIT_BRANCH)/$(shell git log -1 --pretty=format:"%H")
 TIMESTAMP := $(shell date '+%Y-%m-%d_%I:%M:%S%p')
@@ -106,6 +107,8 @@ docker-build-initContainer: docker-buildx-builder
 docker-push-initContainer: docker-buildx-builder
 	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile --push -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) -t $(REPO)/$(INITC_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(INITC_PATH)
 
+docker-get-initContainer-dev-digest:
+	@docker buildx imagetools inspect --raw $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
 ##################################
 # KYVERNO CONTAINER
 ##################################
@@ -142,11 +145,22 @@ docker-build-kyverno-local:
 	@docker build -f $(PWD)/$(KYVERNO_PATH)/localDockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(PWD)/$(KYVERNO_PATH)
 	@docker tag $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(REPO)/$(KYVERNO_IMAGE):latest
 
+docker-get-kyverno-digest:
+	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
+
+docker-publish-kyverno-dev: docker-buildx-builder docker-push-kyverno-dev
+
+docker-push-kyverno-dev: docker-buildx-builder
+	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+
+docker-get-kyverno-dev-digest:
+	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
 ##################################
 # Generate Docs for types.go
 ##################################
 generate-api-docs:
-	go run github.com/ahmetb/gen-crd-api-reference-docs -api-dir ./api -config documentation/api/config.json -template-dir documentation/api/template -out-file documentation/index.html
+	go run gen-crd-api-reference-docs -api-dir ./api -config docs/config.json -template-dir docs/template -out-file docs/crd/v1/index.html
 
 ##################################
 # CLI
@@ -189,7 +203,7 @@ build-all-amd64:
 # Create e2e Infrastruture
 ##################################
 
-create-e2e-infrastruture:
+create-e2e-infrastruture: docker-build-initContainer-local docker-build-kyverno-local
 	chmod a+x $(PWD)/scripts/create-e2e-infrastruture.sh
 	$(PWD)/scripts/create-e2e-infrastruture.sh
 
@@ -216,7 +230,7 @@ $(GO_ACC):
 # go-acc merges the result for pks so that it be used by
 # go tool cover for reporting
 
-test: test-clean test-unit test-e2e test-cmd
+test: test-clean test-unit test-e2e
 
 test-clean:
 	@echo "	cleaning test cache"
@@ -342,3 +356,4 @@ fmt: goimports
 
 vet:
 	go vet ./...
+
