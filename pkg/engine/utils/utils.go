@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	commonAnchor "github.com/kyverno/kyverno/pkg/engine/anchor"
-
 	jsonpatch "github.com/evanphx/json-patch/v5"
+	commonAnchor "github.com/kyverno/kyverno/pkg/engine/anchor"
+	jsonutils "github.com/kyverno/kyverno/pkg/utils/json"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -38,7 +38,10 @@ func (ri RuleType) String() string {
 // ApplyPatches patches given resource with given patches and returns patched document
 // return original resource if any error occurs
 func ApplyPatches(resource []byte, patches [][]byte) ([]byte, error) {
-	joinedPatches := JoinPatches(patches)
+	if len(patches) == 0 {
+		return resource, nil
+	}
+	joinedPatches := jsonutils.JoinPatches(patches...)
 	patch, err := jsonpatch.DecodePatch(joinedPatches)
 	if err != nil {
 		log.Log.V(4).Info("failed to decode JSON patch", "patch", patch)
@@ -69,25 +72,6 @@ func ApplyPatchNew(resource, patch []byte) ([]byte, error) {
 
 	return patchedResource, err
 
-}
-
-// JoinPatches joins array of serialized JSON patches to the single JSONPatch array
-func JoinPatches(patches [][]byte) []byte {
-	var result []byte
-	if len(patches) == 0 {
-		return result
-	}
-
-	result = append(result, []byte("[\n")...)
-	for index, patch := range patches {
-		result = append(result, patch...)
-		if index != len(patches)-1 {
-			result = append(result, []byte(",\n")...)
-		}
-	}
-
-	result = append(result, []byte("\n]")...)
-	return result
 }
 
 //ConvertToUnstructured converts the resource to unstructured format

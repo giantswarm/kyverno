@@ -3,8 +3,8 @@
 ##################################
 # DEFAULTS
 ##################################
-PWD := $(CURDIR)
-GIT_VERSION := $(shell git describe --match "v[0-9]*")
+
+GIT_VERSION := $(shell git describe --match "v[0-9]*" --tags $(git rev-list --tags --max-count=1))
 GIT_VERSION_DEV := $(shell git describe --match "[0-9].[0-9]-dev*")
 GIT_BRANCH := $(shell git branch | grep \* | cut -d ' ' -f2)
 GIT_HASH := $(GIT_BRANCH)/$(shell git log -1 --pretty=format:"%H")
@@ -25,9 +25,13 @@ PACKAGE ?=github.com/kyverno/kyverno
 CONTROLLER_GEN=controller-gen
 CONTROLLER_GEN_REQ_VERSION := v0.4.0
 LD_FLAGS="-s -w -X $(PACKAGE)/pkg/version.BuildVersion=$(GIT_VERSION) -X $(PACKAGE)/pkg/version.BuildHash=$(GIT_HASH) -X $(PACKAGE)/pkg/version.BuildTime=$(TIMESTAMP)"
-# Used to disable inclusion of cloud provider code in k8schain
-# https://github.com/google/go-containerregistry/tree/main/pkg/authn/k8schain
-TAGS=disable_aws,disable_azure,disable_gcp
+LD_FLAGS_DEV="-s -w -X $(PACKAGE)/pkg/version.BuildVersion=$(GIT_VERSION_DEV) -X $(PACKAGE)/pkg/version.BuildHash=$(GIT_HASH) -X $(PACKAGE)/pkg/version.BuildTime=$(TIMESTAMP)"
+K8S_VERSION ?= $(shell kubectl version --short | grep -i server | cut -d" " -f3 | cut -c2-)
+export K8S_VERSION
+TEST_GIT_BRANCH ?= main
+
+KIND_VERSION=v0.11.1
+KIND_IMAGE?=kindest/node:v1.23.3
 
 ##################################
 # KYVERNO
@@ -45,9 +49,13 @@ unused-package-check:
 ##################################
 # SIGNATURE CONTAINER
 ##################################
-ALPINE_PATH := cmd/alpineBase
-SIG_IMAGE := signatures
-.PHONY: docker-build-signature docker-push-signature
+
+INITC_PATH := cmd/initContainer
+INITC_IMAGE := kyvernopre
+initContainer: fmt vet
+	GOOS=$(GOOS) go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
+
+.PHONY: docker-build-initContainer docker-push-initContainer
 
 docker-buildx-builder:
 	if ! docker buildx ls | grep -q kyverno; then\
@@ -105,13 +113,31 @@ docker-build-initContainer: docker-buildx-builder
 
 .PHONY: docker-push-initContainer
 docker-push-initContainer: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(INITC_PATH)/Dockerfile --push -t $(REPO)/$(INITC_IMAGE):$(GIT_VERSION) -t $(REPO)/$(INITC_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(INITC_PATH)
+	@docker buildx build --file $(PWD)/$(INITC_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG) . --build-arg LD_FLAGS=$(LD_FLAGS)
 
-docker-get-initContainer-dev-digest:
+docker-get-initContainer-digest:
+	@docker buildx imagetools inspect --raw $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
+
+docker-build-initContainer-local:
+	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/$(INITC_PATH)/kyvernopre -ldflags=$(LD_FLAGS) $(PWD)/$(INITC_PATH)/main.go
+	@docker build -f $(PWD)/$(INITC_PATH)/localDockerfile -t $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV) $(PWD)/$(INITC_PATH)
+	@docker tag $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV) $(REPO)/$(INITC_IMAGE):latest
+
+docker-publish-initContainer-dev: docker-buildx-builder docker-push-initContainer-dev
+
+docker-push-initContainer-dev: docker-buildx-builder
+	@docker buildx build --file $(PWD)/$(INITC_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(INITC_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(INITC_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(INITC_IMAGE):latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+
+docker-get-initContainer-digest-dev:
 	@docker buildx imagetools inspect --raw $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
+
 ##################################
 # KYVERNO CONTAINER
 ##################################
+
+.PHONY: docker-build-kyverno docker-push-kyverno
 KYVERNO_PATH := cmd/kyverno
 KYVERNO_IMAGE := kyverno
 
@@ -140,9 +166,16 @@ kyverno: fmt vet
 	GOOS=$(GOOS) CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
 
 docker-build-kyverno-local:
-	CGO_ENABLED=0 GOOS=linux CGO_ENABLED=0 go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -tags $(TAGS) -ldflags=$(LD_FLAGS) $(PWD)/$(KYVERNO_PATH)/main.go
-	@docker build -f $(PWD)/$(KYVERNO_PATH)/localDockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(PWD)/$(KYVERNO_PATH)
-	@docker tag $(REPO)/$(KYVERNO_IMAGE):$(GIT_VERSION) $(REPO)/$(KYVERNO_IMAGE):latest
+	CGO_ENABLED=0 GOOS=linux go build -o $(PWD)/$(KYVERNO_PATH)/kyverno -ldflags=$(LD_FLAGS_DEV) $(PWD)/$(KYVERNO_PATH)/main.go
+	@docker build -f $(PWD)/$(KYVERNO_PATH)/localDockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) -t $(REPO)/$(KYVERNO_IMAGE):latest $(PWD)/$(KYVERNO_PATH)
+	@docker tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest
+
+docker-build-kyverno-amd64:
+	@docker build -f $(PWD)/$(KYVERNO_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS) --build-arg TARGETPLATFORM="linux/amd64"
+	@docker tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) $(REPO)/$(KYVERNO_IMAGE):latest
+
+docker-push-kyverno: docker-buildx-builder
+	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG) . --build-arg LD_FLAGS=$(LD_FLAGS)
 
 docker-get-kyverno-digest:
 	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
@@ -152,13 +185,64 @@ docker-publish-kyverno-dev: docker-buildx-builder docker-push-kyverno-dev
 docker-push-kyverno-dev: docker-buildx-builder
 	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
 	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(KYVERNO_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_IMAGE):latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+
+docker-get-kyverno-digest-dev:
+	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
+
+##################################
+# Generate Docs for types.go
+##################################
+
+.PHONY: gen-crd-api-reference-docs
+gen-crd-api-reference-docs: ## Install gen-crd-api-reference-docs
+	go install github.com/ahmetb/gen-crd-api-reference-docs@latest
+
+.PHONY: gen-crd-api-reference-docs
+generate-api-docs: gen-crd-api-reference-docs ## Generate api reference docs
+	rm -rf docs/crd
+	mkdir docs/crd
+	gen-crd-api-reference-docs -v 6 -api-dir ./api/kyverno/v1alpha2 -config docs/config.json -template-dir docs/template -out-file docs/crd/v1alpha2/index.html
+	gen-crd-api-reference-docs -v 6 -api-dir ./api/kyverno/v1 -config docs/config.json -template-dir docs/template -out-file docs/crd/v1/index.html
+
+.PHONY: verify-api-docs
+verify-api-docs: generate-api-docs ## Check api reference docs are up to date
+	git --no-pager diff docs
+	@echo 'If this test fails, it is because the git diff is non-empty after running "make generate-api-docs".'
+	@echo 'To correct this, locally run "make generate-api-docs", commit the changes, and re-run tests.'
+	git diff --quiet --exit-code docs
+
+##################################
+# CLI
+##################################
+.PHONY: docker-build-cli docker-push-cli
+CLI_PATH := cmd/cli/kubectl-kyverno
+KYVERNO_CLI_IMAGE := kyverno-cli
+
+cli:
+	GOOS=$(GOOS) go build -o $(PWD)/$(CLI_PATH)/kyverno -ldflags=$(LD_FLAGS) $(PWD)/$(CLI_PATH)/main.go
+
+docker-publish-cli: docker-buildx-builder docker-build-cli docker-push-cli
 
 docker-build-cli: docker-buildx-builder
 	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) --platform "linux/$(ARCH)" --output type=docker $(PWD)/$(CLI_PATH)
 
 .PHONY: docker-push-cli
 docker-push-cli: docker-buildx-builder
-	@docker buildx build -f $(PWD)/$(CLI_PATH)/Dockerfile --push -t $(REPO)/$(KYVERNO_CLI_IMAGE):$(GIT_VERSION) -t $(REPO)/$(KYVERNO_CLI_IMAGE):latest --platform "linux/$(ARCH)" $(PWD)/$(CLI_PATH)
+	@docker buildx build --file $(PWD)/$(CLI_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_CLI_IMAGE):$(IMAGE_TAG) . --build-arg LD_FLAGS=$(LD_FLAGS)
+
+docker-get-cli-digest:
+	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_CLI_IMAGE):$(IMAGE_TAG) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
+
+docker-publish-cli-dev: docker-buildx-builder docker-push-cli-dev
+
+docker-push-cli-dev: docker-buildx-builder
+	@docker buildx build --file $(PWD)/$(CLI_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_CLI_IMAGE):$(IMAGE_TAG_DEV) . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(CLI_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_CLI_IMAGE):$(IMAGE_TAG_LATEST_DEV)-latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+	@docker buildx build --file $(PWD)/$(CLI_PATH)/Dockerfile --progress plane --push --platform linux/arm64,linux/amd64,linux/s390x --tag $(REPO)/$(KYVERNO_CLI_IMAGE):latest . --build-arg LD_FLAGS=$(LD_FLAGS_DEV)
+
+docker-get-cli-digest-dev:
+	@docker buildx imagetools inspect --raw $(REPO)/$(KYVERNO_CLI_IMAGE):$(IMAGE_TAG_DEV) | perl -pe 'chomp if eof' | openssl dgst -sha256 | sed 's/^.* //'
 
 ##################################
 docker-publish-all: docker-buildx-builder docker-publish-initContainer docker-publish-kyverno docker-publish-cli
@@ -173,12 +257,33 @@ build-all-amd64:
 # Create e2e Infrastruture
 ##################################
 
-create-e2e-infrastruture: docker-build-initContainer-local docker-build-kyverno-local
-	chmod a+x $(PWD)/scripts/create-e2e-infrastruture.sh
-	$(PWD)/scripts/create-e2e-infrastruture.sh
+.PHONY: kind-install
+kind-install: ## Install kind
+ifeq (, $(shell which kind))
+	go install sigs.k8s.io/kind@$(KIND_VERSION)
+endif
 
+.PHONY: kind-e2e-cluster
+kind-e2e-cluster: kind-install ## Create kind cluster for e2e tests
+	kind create cluster --image=$(KIND_IMAGE)
 
-##################################
+.PHONY: e2e-kustomize
+e2e-kustomize: kustomize ## Build kustomize manifests for e2e tests
+	cd config && \
+	kustomize edit set image $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV) && \
+	kustomize edit set image $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV)
+	kustomize build config/ -o config/install.yaml
+
+.PHONY: e2e-init-container
+e2e-init-container: kind-e2e-cluster docker-build-initContainer-local
+	kind load docker-image $(REPO)/$(INITC_IMAGE):$(IMAGE_TAG_DEV)
+
+.PHONY: e2e-kyverno-container
+e2e-kyverno-container: kind-e2e-cluster docker-build-kyverno-local
+	kind load docker-image $(REPO)/$(KYVERNO_IMAGE):$(IMAGE_TAG_DEV)
+
+.PHONY: create-e2e-infrastruture
+create-e2e-infrastruture: e2e-init-container e2e-kyverno-container e2e-kustomize ## Setup infrastructure for e2e tests
 
 ##################################
 # Testing & Code-Coverage
@@ -206,6 +311,28 @@ test-clean:
 	@echo "	cleaning test cache"
 	go clean -testcache ./...
 
+.PHONY: test-cli
+test-cli: test-cli-policies test-cli-local test-cli-local-mutate test-cli-test-case-selector-flag
+
+.PHONY: test-cli-policies
+test-cli-policies: cli
+	cmd/cli/kubectl-kyverno/kyverno test https://github.com/kyverno/policies/$(TEST_GIT_BRANCH)
+
+.PHONY: test-cli-local
+test-cli-local: cli
+	cmd/cli/kubectl-kyverno/kyverno test ./test/cli/test
+
+.PHONY: test-cli-local-mutate
+test-cli-local-mutate: cli
+	cmd/cli/kubectl-kyverno/kyverno test ./test/cli/test-mutate
+
+.PHONY: test-cli-test-case-selector-flag
+test-cli-test-case-selector-flag: cli
+	cmd/cli/kubectl-kyverno/kyverno test ./test/cli/test --test-case-selector "policy=disallow-latest-tag, rule=require-image-tag, resource=test-require-image-tag-pass"
+
+.PHONY: test-cli-registry
+test-cli-registry: cli
+	cmd/cli/kubectl-kyverno/kyverno test ./test/cli/registry
 
 # go get downloads and installs the binary
 # we temporarily add the GO_ACC to the path
@@ -213,11 +340,11 @@ test-unit: $(GO_ACC)
 	@echo "	running unit tests"
 	go-acc ./... -o $(CODE_COVERAGE_FILE_TXT)
 
-code-cov-report: $(CODE_COVERAGE_FILE_TXT)
-# transform to html format
+code-cov-report: ## Generate code coverage report
 	@echo "	generating code coverage report"
-	go tool cover -html=coverage.txt
-	if [ -a $(CODE_COVERAGE_FILE_HTML) ]; then open $(CODE_COVERAGE_FILE_HTML); fi;
+	GO111MODULE=on go test -v -coverprofile=coverage.out ./...
+	go tool cover -func=coverage.out -o $(CODE_COVERAGE_FILE_TXT)
+	go tool cover -html=coverage.out -o $(CODE_COVERAGE_FILE_HTML)
 
 # Test E2E
 test-e2e:
@@ -250,8 +377,14 @@ test-cmd: go-build-cli
 godownloader:
 	godownloader .goreleaser.yml --repo kyverno/kyverno -o ./scripts/install-cli.sh  --source="raw"
 
-# kustomize-crd will create install.yaml
-kustomize-crd:
+.PHONY: kustomize
+kustomize: ## Install kustomize
+ifeq (, $(shell which kustomize))
+	go install sigs.k8s.io/kustomize/kustomize/v4@latest
+endif
+
+.PHONY: kustomize-crd
+kustomize-crd: kustomize ## Create install.yaml
 	# Create CRD for helm deployment Helm
 	kustomize build ./config/release | kustomize cfg grep kind=CustomResourceDefinition | $(SED) -e "1i{{- if .Values.installCRDs }}" -e '$$a{{- end }}' > ./charts/kyverno/templates/crds.yaml
 	# Generate install.yaml that have all resources for kyverno
@@ -268,26 +401,32 @@ release-notes:
 	@bash -c 'while IFS= read -r line ; do if [[ "$$line" == "## "* && "$$line" != "## $(VERSION)" ]]; then break ; fi; echo "$$line"; done < "CHANGELOG.md"' \
 	true
 
-kyverno-crd: controller-gen
+##################################
+# CODEGEN
+##################################
+
+.PHONY: kyverno-crd
+kyverno-crd: controller-gen ## Generate Kyverno CRDs
 	$(CONTROLLER_GEN) crd paths=./api/kyverno/... crd:crdVersions=v1 output:dir=./config/crds
 
-report-crd: controller-gen
+.PHONY: report-crd
+report-crd: controller-gen ## Generate policy reports CRDs
 	$(CONTROLLER_GEN) crd paths=./api/policyreport/... crd:crdVersions=v1 output:dir=./config/crds
 
-# install the right version of controller-gen
-install-controller-gen:
+.PHONY: install-controller-gen
+install-controller-gen: ## Install controller-gen
 	@{ \
 	set -e ;\
 	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
 	cd $$CONTROLLER_GEN_TMP_DIR ;\
 	go mod init tmp ;\
-	go get sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_REQ_VERSION) ;\
+	go install sigs.k8s.io/controller-tools/cmd/controller-gen@$(CONTROLLER_GEN_REQ_VERSION) ;\
 	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
 	}
 	CONTROLLER_GEN=$(GOPATH)/bin/controller-gen
 
-# setup controller-gen with the right version, if necessary
-controller-gen:
+.PHONY: controller-gen
+controller-gen: ## Setup controller-gen
 ifeq (, $(shell which controller-gen))
 	@{ \
 	echo "controller-gen not found!";\
@@ -306,24 +445,73 @@ CONTROLLER_GEN=$(shell which controller-gen)
 endif
 
 # Bootstrap auto-generable code associated with deepcopy
+.PHONY: deepcopy-autogen
 deepcopy-autogen: controller-gen
 	$(CONTROLLER_GEN) object:headerFile="scripts/boilerplate.go.txt" paths="./..."
 
+.PHONY: codegen
+codegen: kyverno-crd report-crd deepcopy-autogen generate-api-docs gen-helm ## Update all generated code and docs
+
+.PHONY: verify-api
+verify-api: kyverno-crd report-crd deepcopy-autogen ## Check api is up to date
+	git --no-pager diff api
+	@echo 'If this test fails, it is because the git diff is non-empty after running "make codegen".'
+	@echo 'To correct this, locally run "make codegen", commit the changes, and re-run tests.'
+	git diff --quiet --exit-code api
+
+.PHONY: verify-config
+verify-config: kyverno-crd report-crd ## Check config is up to date
+	git --no-pager diff config
+	@echo 'If this test fails, it is because the git diff is non-empty after running "make codegen".'
+	@echo 'To correct this, locally run "make codegen", commit the changes, and re-run tests.'
+	git diff --quiet --exit-code config
+
+.PHONY: verify-codegen
+verify-codegen: verify-api verify-config verify-api-docs verify-helm ## Verify all generated code and docs are up to date
+
+.PHONY: goimports
 goimports:
 ifeq (, $(shell which goimports))
 	@{ \
 	echo "goimports not found!";\
 	echo "installing goimports...";\
-	go get golang.org/x/tools/cmd/goimports;\
+	go install golang.org/x/tools/cmd/goimports@latest;\
 	}
 else
 GO_IMPORTS=$(shell which goimports)
 endif
 
 # Run go fmt against code
+.PHONY: fmt
 fmt: goimports
 	go fmt ./... && $(GO_IMPORTS) -w ./
 
+.PHONY: vet
 vet:
 	go vet ./...
 
+##################################
+# HELM
+##################################
+
+.PHONY: gen-helm-docs
+gen-helm-docs: ## Generate Helm docs
+	@docker run -v ${PWD}:/work -w /work jnorwood/helm-docs:v1.6.0 -s file
+
+.PHONY: gen-helm
+gen-helm: gen-helm-docs kustomize-crd ## Generate Helm charts stuff
+
+.PHONY: verify-helm
+verify-helm: gen-helm ## Check Helm charts are up to date
+	git --no-pager diff charts
+	@echo 'If this test fails, it is because the git diff is non-empty after running "make gen-helm".'
+	@echo 'To correct this, locally run "make gen-helm", commit the changes, and re-run tests.'
+	git diff --quiet --exit-code charts
+
+##################################
+# HELP
+##################################
+
+.PHONY: help
+help: ## Shows the available commands
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

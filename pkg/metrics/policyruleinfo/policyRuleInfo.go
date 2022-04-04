@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	kyverno "github.com/kyverno/kyverno/api/kyverno/v1"
+	"github.com/kyverno/kyverno/pkg/autogen"
 	"github.com/kyverno/kyverno/pkg/metrics"
 	prom "github.com/prometheus/client_golang/prometheus"
 )
@@ -70,10 +71,10 @@ func (pc PromConfig) AddPolicy(policy interface{}) error {
 		policyBackgroundMode := metrics.ParsePolicyBackgroundMode(inputPolicy.Spec.Background)
 		policyType := metrics.Cluster
 		policyNamespace := "" // doesn't matter for cluster policy
-		policyName := inputPolicy.ObjectMeta.Name
-		ready := inputPolicy.Status.Ready
+		policyName := inputPolicy.GetName()
+		ready := inputPolicy.IsReady()
 		// registering the metrics on a per-rule basis
-		for _, rule := range inputPolicy.Spec.Rules {
+		for _, rule := range autogen.ComputeRules(inputPolicy) {
 			ruleName := rule.Name
 			ruleType := metrics.ParseRuleType(rule)
 
@@ -89,11 +90,11 @@ func (pc PromConfig) AddPolicy(policy interface{}) error {
 		}
 		policyBackgroundMode := metrics.ParsePolicyBackgroundMode(inputPolicy.Spec.Background)
 		policyType := metrics.Namespaced
-		policyNamespace := inputPolicy.ObjectMeta.Namespace
-		policyName := inputPolicy.ObjectMeta.Name
-		ready := inputPolicy.Status.Ready
+		policyNamespace := inputPolicy.GetNamespace()
+		policyName := inputPolicy.GetName()
+		ready := inputPolicy.IsReady()
 		// registering the metrics on a per-rule basis
-		for _, rule := range inputPolicy.Spec.Rules {
+		for _, rule := range autogen.ComputeRules(inputPolicy) {
 			ruleName := rule.Name
 			ruleType := metrics.ParseRuleType(rule)
 
@@ -110,7 +111,7 @@ func (pc PromConfig) AddPolicy(policy interface{}) error {
 func (pc PromConfig) RemovePolicy(policy interface{}) error {
 	switch inputPolicy := policy.(type) {
 	case *kyverno.ClusterPolicy:
-		for _, rule := range inputPolicy.Spec.Rules {
+		for _, rule := range autogen.ComputeRules(inputPolicy) {
 			policyValidationMode, err := metrics.ParsePolicyValidationMode(inputPolicy.Spec.ValidationFailureAction)
 			if err != nil {
 				return err
@@ -118,10 +119,10 @@ func (pc PromConfig) RemovePolicy(policy interface{}) error {
 			policyBackgroundMode := metrics.ParsePolicyBackgroundMode(inputPolicy.Spec.Background)
 			policyType := metrics.Cluster
 			policyNamespace := "" // doesn't matter for cluster policy
-			policyName := inputPolicy.ObjectMeta.Name
+			policyName := inputPolicy.GetName()
 			ruleName := rule.Name
 			ruleType := metrics.ParseRuleType(rule)
-			ready := inputPolicy.Status.Ready
+			ready := inputPolicy.IsReady()
 
 			if err = pc.registerPolicyRuleInfoMetric(policyValidationMode, policyType, policyBackgroundMode, policyNamespace, policyName, ruleName, ruleType, PolicyRuleDeleted, ready); err != nil {
 				return err
@@ -129,18 +130,18 @@ func (pc PromConfig) RemovePolicy(policy interface{}) error {
 		}
 		return nil
 	case *kyverno.Policy:
-		for _, rule := range inputPolicy.Spec.Rules {
+		for _, rule := range autogen.ComputeRules(inputPolicy) {
 			policyValidationMode, err := metrics.ParsePolicyValidationMode(inputPolicy.Spec.ValidationFailureAction)
 			if err != nil {
 				return err
 			}
 			policyBackgroundMode := metrics.ParsePolicyBackgroundMode(inputPolicy.Spec.Background)
 			policyType := metrics.Namespaced
-			policyNamespace := inputPolicy.ObjectMeta.Namespace
-			policyName := inputPolicy.ObjectMeta.Name
+			policyNamespace := inputPolicy.GetNamespace()
+			policyName := inputPolicy.GetName()
 			ruleName := rule.Name
 			ruleType := metrics.ParseRuleType(rule)
-			ready := inputPolicy.Status.Ready
+			ready := inputPolicy.IsReady()
 
 			if err = pc.registerPolicyRuleInfoMetric(policyValidationMode, policyType, policyBackgroundMode, policyNamespace, policyName, ruleName, ruleType, PolicyRuleDeleted, ready); err != nil {
 				return err

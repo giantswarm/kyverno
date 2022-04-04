@@ -16,7 +16,9 @@ import (
 	"github.com/go-git/go-billy/v5"
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/kataras/tablewriter"
+	v1 "github.com/kyverno/kyverno/api/kyverno/v1"
 	report "github.com/kyverno/kyverno/api/policyreport/v1alpha2"
+	"github.com/kyverno/kyverno/pkg/autogen"
 	client "github.com/kyverno/kyverno/pkg/dclient"
 	"github.com/kyverno/kyverno/pkg/engine/response"
 	"github.com/kyverno/kyverno/pkg/engine/utils"
@@ -77,6 +79,21 @@ applying 1 policy to 4 resources...
 
 Test Summary: 4 tests passed and 0 tests failed
 
+# Test some specific test cases out of many test cases in a local folder.
+kyverno test . --test-case-selector "policy=disallow-latest-tag, rule=require-image-tag, resource=test-require-image-tag-pass"
+
+Executing test-simple...
+applying 1 policy to 1 resource... 
+
+│───│─────────────────────│───────────────────│─────────────────────────────────────────│────────│
+│ # │ POLICY              │ RULE              │ RESOURCE                                │ RESULT │
+│───│─────────────────────│───────────────────│─────────────────────────────────────────│────────│
+│ 1 │ disallow-latest-tag │ require-image-tag │ default/Pod/test-require-image-tag-pass │ Pass   │
+│───│─────────────────────│───────────────────│─────────────────────────────────────────│────────│
+
+Test Summary: 1 tests passed and 0 tests failed
+
+
 
 **TEST FILE STRUCTURE**:
 
@@ -135,8 +152,10 @@ For more information visit https://kyverno.io/docs/kyverno-cli/#test
 // Command returns version command
 func Command() *cobra.Command {
 	var cmd *cobra.Command
+	var testCase string
 	var testFile []byte
-	var valuesFile, fileName, gitBranch string
+	var fileName, gitBranch string
+	var registryAccess bool
 	cmd = &cobra.Command{
 		Use: "test <path_to_folder_Containing_test.yamls> [flags]\n  kyverno test <path_to_gitRepository_with_dir> --git-branch <branchName>\n  kyverno test --manifest-mutate > kyverno-test.yaml\n  kyverno test --manifest-validate > kyverno-test.yaml",
 		// Args:    cobra.ExactArgs(1),
@@ -194,8 +213,8 @@ results:
 				fmt.Println(string(testFile))
 				return nil
 			}
-
-			_, err = testCommandExecute(dirPath, valuesFile, fileName, gitBranch)
+			store.SetRegistryAccess(registryAccess)
+			_, err = testCommandExecute(dirPath, fileName, gitBranch, testCase)
 			if err != nil {
 				log.Log.V(3).Info("a directory is required")
 				return err
@@ -206,9 +225,10 @@ results:
 	}
 	cmd.Flags().StringVarP(&fileName, "file-name", "f", "kyverno-test.yaml", "test filename")
 	cmd.Flags().StringVarP(&gitBranch, "git-branch", "b", "", "test github repository branch")
-
+	cmd.Flags().StringVarP(&testCase, "test-case-selector", "t", "", `run some specific test cases by passing a string argument in double quotes to this flag like - "policy=<policy_name>, rule=<rule_name>, resource=<resource_name". The argument could be any combination of policy, rule and resource.`)
 	cmd.Flags().BoolP("manifest-mutate", "", false, "prints out a template test manifest for a mutate policy")
 	cmd.Flags().BoolP("manifest-validate", "", false, "prints out a template test manifest for a validate policy")
+	cmd.Flags().BoolVarP(&registryAccess, "registry", "", false, "If set to true, access the image registry using local docker credentials to populate external data")
 	return cmd
 }
 
@@ -264,17 +284,60 @@ type resultCounts struct {
 	Fail int
 }
 
-func testCommandExecute(dirPath []string, valuesFile string, fileName string, gitBranch string) (rc *resultCounts, err error) {
+type testFilter struct {
+	policy   string
+	rule     string
+	resource string
+	enabled  bool
+}
+
+func testCommandExecute(dirPath []string, fileName string, gitBranch string, testCase string) (rc *resultCounts, err error) {
 	var errors []error
 	fs := memfs.New()
 	rc = &resultCounts{}
 	var testYamlCount int
-	var testYamlNameCount int
+	var tf = &testFilter{
+		enabled: true,
+	}
 
 	if len(dirPath) == 0 {
 		return rc, sanitizederror.NewWithError(fmt.Sprintf("a directory is required"), err)
 	}
 
+	if len(testCase) != 0 {
+		parameters := map[string]string{"policy": "", "rule": "", "resource": ""}
+
+		for _, t := range strings.Split(testCase, ",") {
+			if !strings.Contains(t, "=") {
+				fmt.Printf("\n Invalid test-case-selector argument. Selecting all test cases. \n")
+				tf.enabled = false
+				break
+			}
+
+			key := strings.TrimSpace(strings.Split(t, "=")[0])
+			value := strings.TrimSpace(strings.Split(t, "=")[1])
+
+			_, ok := parameters[key]
+			if !ok {
+				fmt.Printf("\n Invalid parameter. Parameter can only be policy, rule or resource. Selecting all test cases \n")
+				tf.enabled = false
+				break
+			}
+
+			parameters[key] = value
+		}
+
+		tf.policy = parameters["policy"]
+		tf.rule = parameters["rule"]
+		tf.resource = parameters["resource"]
+	} else {
+		tf.enabled = false
+	}
+
+	openAPIController, err := openapi.NewOpenAPIController()
+	if err != nil {
+		return rc, fmt.Errorf("unable to create open api controller, %w", err)
+	}
 	if strings.Contains(string(dirPath[0]), "https://") {
 		gitURL, err := url.Parse(dirPath[0])
 		if err != nil {
@@ -334,11 +397,8 @@ func testCommandExecute(dirPath []string, valuesFile string, fileName string, gi
 				continue
 			}
 
-			if strings.Contains(file.Name(), fileName) || strings.Contains(file.Name(), "test.yaml") {
+			if file.Name() == fileName {
 				testYamlCount++
-				if strings.Contains(file.Name(), "test.yaml") {
-					testYamlNameCount++
-				}
 				policyresoucePath := strings.Trim(yamlFilePath, fileName)
 				bytes, err := ioutil.ReadAll(file)
 				if err != nil {
@@ -352,7 +412,7 @@ func testCommandExecute(dirPath []string, valuesFile string, fileName string, gi
 					continue
 				}
 
-				if err := applyPoliciesFromPath(fs, policyBytes, valuesFile, true, policyresoucePath, rc); err != nil {
+				if err := applyPoliciesFromPath(fs, policyBytes, true, policyresoucePath, rc, openAPIController, tf); err != nil {
 					return rc, sanitizederror.NewWithError("failed to apply test command", err)
 				}
 			}
@@ -361,21 +421,14 @@ func testCommandExecute(dirPath []string, valuesFile string, fileName string, gi
 		if testYamlCount == 0 {
 			fmt.Printf("\n No test yamls available \n")
 		}
-		if testYamlNameCount > 0 {
-			fmt.Printf("\n Note : test.yaml file name is deprecated in 1.6.0 release. Please provide test yaml file as kyverno-test.yaml \n")
-		}
 
 	} else {
 		var testFiles int
-		var deprecatedFiles int
 		path := filepath.Clean(dirPath[0])
-		errors = getLocalDirTestFiles(fs, path, fileName, valuesFile, rc, &testFiles, &deprecatedFiles)
+		errors = getLocalDirTestFiles(fs, path, fileName, rc, &testFiles, openAPIController, tf)
 
 		if testFiles == 0 {
 			fmt.Printf("\n No test files found. Please provide test YAML files named kyverno-test.yaml \n")
-		}
-		if deprecatedFiles > 0 {
-			fmt.Printf("\n Note: The test.yaml file name is deprecated in 1.6.0 release. Please use kyverno-test.yaml instead. \n")
 		}
 	}
 
@@ -396,7 +449,7 @@ func testCommandExecute(dirPath []string, valuesFile string, fileName string, gi
 	return rc, nil
 }
 
-func getLocalDirTestFiles(fs billy.Filesystem, path, fileName, valuesFile string, rc *resultCounts, testFiles *int, deprecatedFiles *int) []error {
+func getLocalDirTestFiles(fs billy.Filesystem, path, fileName string, rc *resultCounts, testFiles *int, openAPIController *openapi.Controller, tf *testFilter) []error {
 	var errors []error
 
 	files, err := ioutil.ReadDir(path)
@@ -405,14 +458,11 @@ func getLocalDirTestFiles(fs billy.Filesystem, path, fileName, valuesFile string
 	}
 	for _, file := range files {
 		if file.IsDir() {
-			getLocalDirTestFiles(fs, filepath.Join(path, file.Name()), fileName, valuesFile, rc, testFiles, deprecatedFiles)
+			getLocalDirTestFiles(fs, filepath.Join(path, file.Name()), fileName, rc, testFiles, openAPIController, tf)
 			continue
 		}
-		if strings.Contains(file.Name(), fileName) || strings.Contains(file.Name(), "test.yaml") {
+		if file.Name() == fileName {
 			*testFiles++
-			if strings.Compare(file.Name(), "test.yaml") == 0 {
-				*deprecatedFiles++
-			}
 			// We accept the risk of including files here as we read the test dir only.
 			yamlFile, err := ioutil.ReadFile(filepath.Join(path, file.Name())) // #nosec G304
 			if err != nil {
@@ -424,7 +474,7 @@ func getLocalDirTestFiles(fs billy.Filesystem, path, fileName, valuesFile string
 				errors = append(errors, sanitizederror.NewWithError("failed to convert json", err))
 				continue
 			}
-			if err := applyPoliciesFromPath(fs, valuesBytes, valuesFile, false, path, rc); err != nil {
+			if err := applyPoliciesFromPath(fs, valuesBytes, false, path, rc, openAPIController, tf); err != nil {
 				errors = append(errors, sanitizederror.NewWithError(fmt.Sprintf("failed to apply test command from file %s", file.Name()), err))
 				continue
 			}
@@ -660,8 +710,8 @@ func getFullPath(paths []string, policyResourcePath string, isGit bool) []string
 	return paths
 }
 
-func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile string, isGit bool, policyResourcePath string, rc *resultCounts) (err error) {
-	openAPIController, err := openapi.NewOpenAPIController()
+func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, isGit bool, policyResourcePath string, rc *resultCounts, openAPIController *openapi.Controller, tf *testFilter) (err error) {
+
 	engineResponses := make([]*response.EngineResponse, 0)
 	var dClient *client.Client
 	values := &Test{}
@@ -674,8 +724,22 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 		return sanitizederror.NewWithError("failed to decode yaml", err)
 	}
 
+	if tf.enabled {
+		var filteredResults []TestResults
+		for _, res := range values.Results {
+			if (len(tf.policy) == 0 || tf.policy == res.Policy) && (len(tf.resource) == 0 || tf.resource == res.Resource) && (len(tf.rule) == 0 || tf.rule == res.Rule) {
+				filteredResults = append(filteredResults, res)
+			}
+		}
+		values.Results = filteredResults
+	}
+
+	if len(values.Results) == 0 {
+		return nil
+	}
+
 	fmt.Printf("\nExecuting %s...", values.Name)
-	valuesFile = values.Variables
+	valuesFile := values.Variables
 	variables, globalValMap, valuesMap, namespaceSelectorMap, err := common.GetVariable(variablesString, values.Variables, fs, isGit, policyResourcePath)
 	if err != nil {
 		if !sanitizederror.IsErrorSanitized(err) {
@@ -699,7 +763,32 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 		os.Exit(1)
 	}
 
-	mutatedPolicies, err := common.MutatePolices(policies)
+	var filteredPolicies = []v1.PolicyInterface{}
+	for _, p := range policies {
+		for _, res := range values.Results {
+			if p.GetName() == res.Policy {
+				filteredPolicies = append(filteredPolicies, p)
+				break
+			}
+		}
+	}
+
+	for _, p := range filteredPolicies {
+		var filteredRules = []v1.Rule{}
+
+		for _, rule := range autogen.ComputeRules(p) {
+			for _, res := range values.Results {
+				if rule.Name == res.Rule {
+					filteredRules = append(filteredRules, rule)
+					break
+				}
+			}
+		}
+		p.GetSpec().SetRules(filteredRules)
+	}
+	policies = filteredPolicies
+
+	mutatedPolicies, err := common.MutatePolicies(policies)
 	if err != nil {
 		if !sanitizederror.IsErrorSanitized(err) {
 			return sanitizederror.NewWithError("failed to mutate policy", err)
@@ -717,6 +806,17 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 		os.Exit(1)
 	}
 
+	var filteredResources = []*unstructured.Unstructured{}
+	for _, r := range resources {
+		for _, res := range values.Results {
+			if r.GetName() == res.Resource {
+				filteredResources = append(filteredResources, r)
+				break
+			}
+		}
+	}
+	resources = filteredResources
+
 	msgPolicies := "1 policy"
 	if len(mutatedPolicies) > 1 {
 		msgPolicies = fmt.Sprintf("%d policies", len(policies))
@@ -732,9 +832,9 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 	}
 
 	for _, policy := range mutatedPolicies {
-		err := policy2.Validate(policy, nil, true, openAPIController)
+		_, err := policy2.Validate(policy, nil, true, openAPIController)
 		if err != nil {
-			log.Log.Error(err, "skipping invalid policy", "name", policy.Name)
+			log.Log.Error(err, "skipping invalid policy", "name", policy.GetName())
 			continue
 		}
 
@@ -744,8 +844,8 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 		if len(variable) > 0 {
 			if len(variables) == 0 {
 				// check policy in variable file
-				if valuesFile == "" || valuesMap[policy.Name] == nil {
-					fmt.Printf("test skipped for policy  %v  (as required variables are not provided by the users) \n \n", policy.Name)
+				if valuesFile == "" || valuesMap[policy.GetName()] == nil {
+					fmt.Printf("test skipped for policy  %v  (as required variables are not provided by the users) \n \n", policy.GetName())
 				}
 			}
 		}
@@ -755,12 +855,12 @@ func applyPoliciesFromPath(fs billy.Filesystem, policyBytes []byte, valuesFile s
 		for _, resource := range resources {
 			thisPolicyResourceValues, err := common.CheckVariableForPolicy(valuesMap, globalValMap, policy.GetName(), resource.GetName(), resource.GetKind(), variables, kindOnwhichPolicyIsApplied, variable)
 			if err != nil {
-				return sanitizederror.NewWithError(fmt.Sprintf("policy `%s` have variables. pass the values for the variables for resource `%s` using set/values_file flag", policy.Name, resource.GetName()), err)
+				return sanitizederror.NewWithError(fmt.Sprintf("policy `%s` have variables. pass the values for the variables for resource `%s` using set/values_file flag", policy.GetName(), resource.GetName()), err)
 			}
 
 			ers, info, err := common.ApplyPolicyOnResource(policy, resource, "", false, thisPolicyResourceValues, true, namespaceSelectorMap, false, &resultCounts, false)
 			if err != nil {
-				return sanitizederror.NewWithError(fmt.Errorf("failed to apply policy %v on resource %v", policy.Name, resource.GetName()).Error(), err)
+				return sanitizederror.NewWithError(fmt.Errorf("failed to apply policy %v on resource %v", policy.GetName(), resource.GetName()).Error(), err)
 			}
 			engineResponses = append(engineResponses, ers...)
 			pvInfos = append(pvInfos, info)

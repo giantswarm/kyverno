@@ -22,26 +22,33 @@ func LoadContext(logger logr.Logger, contextEntries []kyverno.ContextEntry, ctx 
 		return nil
 	}
 
-	policyName := ctx.Policy.Name
+	policyName := ctx.Policy.GetName()
 	if store.GetMock() {
-		rule := store.GetPolicyRuleFromContext(policyName, ruleName)
-		if rule == nil || len(rule.Values) == 0 {
-			return fmt.Errorf("No values found for policy %s rule %s", policyName, ruleName)
-		}
-		variables := rule.Values
-
-		for key, value := range variables {
-			if trimmedTypedValue := strings.Trim(value, "\n"); strings.Contains(trimmedTypedValue, "\n") {
-				tmp := map[string]interface{}{key: value}
-				tmp = parseMultilineBlockBody(tmp)
-				newVal, _ := json.Marshal(tmp[key])
-				value = string(newVal)
+		if store.GetRegistryAccess() {
+			for _, entry := range contextEntries {
+				if entry.ImageRegistry != nil {
+					if err := loadImageData(logger, entry, ctx); err != nil {
+						return err
+					}
+				}
 			}
+		}
+		rule := store.GetPolicyRuleFromContext(policyName, ruleName)
+		if rule != nil && len(rule.Values) > 0 {
+			variables := rule.Values
+			for key, value := range variables {
+				if trimmedTypedValue := strings.Trim(value, "\n"); strings.Contains(trimmedTypedValue, "\n") {
+					tmp := map[string]interface{}{key: value}
+					tmp = parseMultilineBlockBody(tmp)
+					newVal, _ := json.Marshal(tmp[key])
+					value = string(newVal)
+				}
 
-			jsonData := pkgcommon.VariableToJSON(key, value)
+				jsonData := pkgcommon.VariableToJSON(key, value)
 
-			if err := ctx.JSONContext.AddJSON(jsonData); err != nil {
-				return err
+				if err := ctx.JSONContext.AddJSON(jsonData); err != nil {
+					return err
+				}
 			}
 		}
 	} else {

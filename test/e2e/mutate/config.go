@@ -1,6 +1,8 @@
 package mutate
 
 import (
+	"github.com/blang/semver/v4"
+	"github.com/kyverno/kyverno/test/e2e/common"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -101,30 +103,52 @@ var tests = []struct {
 		PolicyName:         "replace-docker-hub",
 		PolicyRaw:          kyverno_2971_policy,
 		ResourceName:       "nginx",
-		ResourceNamespace:  "test-mutate",
+		ResourceNamespace:  "test-mutate-img",
 		ResourceGVR:        podGVR,
 		ResourceRaw:        kyverno_2971_resource,
 		ExpectedPatternRaw: kyverno_2971_pattern,
 	},
+	{
+		TestDescription:    "checks the global anchor variables for emptyDir",
+		PolicyName:         "add-safe-to-evict",
+		PolicyRaw:          annotate_host_path_policy,
+		ResourceName:       "pod-with-emptydir",
+		ResourceNamespace:  "emptydir",
+		ResourceGVR:        podGVR,
+		ResourceRaw:        podWithEmptyDirAsVolume,
+		ExpectedPatternRaw: podWithVolumePattern,
+	},
+	{
+		TestDescription:    "checks the global anchor variables for hostPath",
+		PolicyName:         "add-safe-to-evict",
+		PolicyRaw:          annotate_host_path_policy,
+		ResourceName:       "pod-with-hostpath",
+		ResourceNamespace:  "hostpath",
+		ResourceGVR:        podGVR,
+		ResourceRaw:        podWithHostPathAsVolume,
+		ExpectedPatternRaw: podWithVolumePattern,
+	},
 }
 
 var ingressTests = struct {
-	testNamesapce string
+	testNamespace string
 	cpol          []byte
 	policyName    string
 	tests         []struct {
 		testName                          string
 		group, version, rsc, resourceName string
 		resource                          []byte
+		skip                              bool
 	}
 }{
-	testNamesapce: "test-ingress",
+	testNamespace: "test-ingress",
 	cpol:          mutateIngressCpol,
 	policyName:    "mutate-ingress-host",
 	tests: []struct {
 		testName                          string
 		group, version, rsc, resourceName string
 		resource                          []byte
+		skip                              bool
 	}{
 		{
 			testName:     "test-networking-v1-ingress",
@@ -133,6 +157,7 @@ var ingressTests = struct {
 			rsc:          "ingresses",
 			resourceName: "kuard-v1",
 			resource:     ingressNetworkingV1,
+			skip:         common.GetKubernetesVersion().LT(semver.MustParse("1.19.0")),
 		},
 		// the following test can be removed after 1.22 cluster
 		{
@@ -142,6 +167,7 @@ var ingressTests = struct {
 			rsc:          "ingresses",
 			resourceName: "kuard-v1beta1",
 			resource:     ingressNetworkingV1beta1,
+			skip:         common.GetKubernetesVersion().GTE(semver.MustParse("1.22.0")),
 		},
 	},
 }

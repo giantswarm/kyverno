@@ -11,10 +11,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/go-logr/logr"
-	common "github.com/kyverno/kyverno/pkg/common"
+	wildcard "github.com/kyverno/go-wildcard"
 	client "github.com/kyverno/kyverno/pkg/dclient"
 	engineutils "github.com/kyverno/kyverno/pkg/engine/utils"
-	"github.com/minio/pkg/wildcard"
 	"k8s.io/api/admission/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -30,16 +29,6 @@ var regexVersion = regexp.MustCompile(`v(\d+).(\d+).(\d+)\.*`)
 func contains(list []string, element string, fn func(string, string) bool) bool {
 	for _, e := range list {
 		if fn(e, element) {
-			return true
-		}
-	}
-	return false
-}
-
-func ContainsPod(list []string, element string) bool {
-	for _, e := range list {
-		_, k := common.GetKindFromGVK(e)
-		if k == element {
 			return true
 		}
 	}

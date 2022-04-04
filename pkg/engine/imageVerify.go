@@ -6,16 +6,17 @@ import (
 	"time"
 
 	v1 "github.com/kyverno/kyverno/api/kyverno/v1"
+	"github.com/kyverno/kyverno/pkg/autogen"
 	"github.com/kyverno/kyverno/pkg/engine/variables"
 	"github.com/kyverno/kyverno/pkg/registryclient"
 	"github.com/pkg/errors"
 
 	"github.com/go-logr/logr"
+	wildcard "github.com/kyverno/go-wildcard"
 	"github.com/kyverno/kyverno/pkg/cosign"
 	"github.com/kyverno/kyverno/pkg/engine/context"
 	"github.com/kyverno/kyverno/pkg/engine/response"
 	"github.com/kyverno/kyverno/pkg/engine/utils"
-	"github.com/minio/pkg/wildcard"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -28,7 +29,7 @@ func VerifyAndPatchImages(policyContext *PolicyContext) (resp *response.EngineRe
 
 	policy := policyContext.Policy
 	patchedResource := policyContext.NewResource
-	logger := log.Log.WithName("EngineVerifyImages").WithValues("policy", policy.Name,
+	logger := log.Log.WithName("EngineVerifyImages").WithValues("policy", policy.GetName(),
 		"kind", patchedResource.GetKind(), "namespace", patchedResource.GetNamespace(), "name", patchedResource.GetName())
 
 	startTime := time.Now()
@@ -48,8 +49,9 @@ func VerifyAndPatchImages(policyContext *PolicyContext) (resp *response.EngineRe
 		}
 	}
 
-	for i := range policyContext.Policy.Spec.Rules {
-		rule := &policyContext.Policy.Spec.Rules[i]
+	rules := autogen.ComputeRules(policyContext.Policy)
+	for i := range rules {
+		rule := &rules[i]
 		if len(rule.VerifyImages) == 0 {
 			continue
 		}
@@ -192,6 +194,10 @@ func (iv *imageVerifier) verifySignature(imageVerify *v1.ImageVerification, imag
 
 	if imageVerify.Subject != "" {
 		opts.Subject = imageVerify.Subject
+	}
+
+	if imageVerify.AdditionalExtensions != nil {
+		opts.AdditionalExtensions = imageVerify.AdditionalExtensions
 	}
 
 	if imageVerify.Annotations != nil {

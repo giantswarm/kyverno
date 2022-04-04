@@ -105,9 +105,8 @@ More info: https://kyverno.io/docs/kyverno-cli/
 func Command() *cobra.Command {
 	var cmd *cobra.Command
 	var resourcePaths []string
-	var cluster, policyReport, stdin bool
+	var cluster, policyReport, stdin, registryAccess bool
 	var mutateLogPath, variablesString, valuesFile, namespace string
-
 	cmd = &cobra.Command{
 		Use:     "apply",
 		Short:   "applies policies on resources",
@@ -122,7 +121,7 @@ func Command() *cobra.Command {
 				}
 			}()
 
-			rc, resources, skipInvalidPolicies, pvInfos, err := applyCommandHelper(resourcePaths, cluster, policyReport, mutateLogPath, variablesString, valuesFile, namespace, policyPaths, stdin)
+			rc, resources, skipInvalidPolicies, pvInfos, err := applyCommandHelper(resourcePaths, cluster, policyReport, mutateLogPath, variablesString, valuesFile, namespace, policyPaths, stdin, registryAccess)
 			if err != nil {
 				return err
 			}
@@ -131,7 +130,6 @@ func Command() *cobra.Command {
 			return nil
 		},
 	}
-
 	cmd.Flags().StringArrayVarP(&resourcePaths, "resource", "r", []string{}, "Path to resource files")
 	cmd.Flags().BoolVarP(&cluster, "cluster", "c", false, "Checks if policies should be applied to cluster in the current context")
 	cmd.Flags().StringVarP(&mutateLogPath, "output", "o", "", "Prints the mutated resources in provided file/directory")
@@ -141,12 +139,14 @@ func Command() *cobra.Command {
 	cmd.Flags().BoolVarP(&policyReport, "policy-report", "", false, "Generates policy report when passed (default policyviolation r")
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Optional Policy parameter passed with cluster flag")
 	cmd.Flags().BoolVarP(&stdin, "stdin", "i", false, "Optional mutate policy parameter to pipe directly through to kubectl")
+	cmd.Flags().BoolVarP(&registryAccess, "registry", "", false, "If set to true, access the image registry using local docker credentials to populate external data")
 	return cmd
 }
 
 func applyCommandHelper(resourcePaths []string, cluster bool, policyReport bool, mutateLogPath string,
-	variablesString string, valuesFile string, namespace string, policyPaths []string, stdin bool) (rc *common.ResultCounts, resources []*unstructured.Unstructured, skipInvalidPolicies SkippedInvalidPolicies, pvInfos []policyreport.Info, err error) {
+	variablesString string, valuesFile string, namespace string, policyPaths []string, stdin bool, registryAccess bool) (rc *common.ResultCounts, resources []*unstructured.Unstructured, skipInvalidPolicies SkippedInvalidPolicies, pvInfos []policyreport.Info, err error) {
 	store.SetMock(true)
+	store.SetRegistryAccess(registryAccess)
 	kubernetesConfig := genericclioptions.NewConfigFlags(true)
 	fs := memfs.New()
 
@@ -221,7 +221,7 @@ func applyCommandHelper(resourcePaths []string, cluster bool, policyReport bool,
 		}
 	}
 
-	mutatedPolicies, err := common.MutatePolices(policies)
+	mutatedPolicies, err := common.MutatePolicies(policies)
 	if err != nil {
 		if !sanitizederror.IsErrorSanitized(err) {
 			return rc, resources, skipInvalidPolicies, pvInfos, sanitizederror.NewWithError("failed to mutate policy", err)
@@ -268,13 +268,13 @@ func applyCommandHelper(resourcePaths []string, cluster bool, policyReport bool,
 	skipInvalidPolicies.invalid = make([]string, 0)
 
 	for _, policy := range mutatedPolicies {
-		err := policy2.Validate(policy, nil, true, openAPIController)
+		_, err := policy2.Validate(policy, nil, true, openAPIController)
 		if err != nil {
 			log.Log.Error(err, "policy validation error")
 			if strings.HasPrefix(err.Error(), "variable 'element.name'") {
-				skipInvalidPolicies.invalid = append(skipInvalidPolicies.invalid, policy.Name)
+				skipInvalidPolicies.invalid = append(skipInvalidPolicies.invalid, policy.GetName())
 			} else {
-				skipInvalidPolicies.skipped = append(skipInvalidPolicies.skipped, policy.Name)
+				skipInvalidPolicies.skipped = append(skipInvalidPolicies.skipped, policy.GetName())
 			}
 
 			continue
@@ -285,8 +285,8 @@ func applyCommandHelper(resourcePaths []string, cluster bool, policyReport bool,
 		if len(variable) > 0 {
 			if len(variables) == 0 {
 				// check policy in variable file
-				if valuesFile == "" || valuesMap[policy.Name] == nil {
-					skipInvalidPolicies.skipped = append(skipInvalidPolicies.skipped, policy.Name)
+				if valuesFile == "" || valuesMap[policy.GetName()] == nil {
+					skipInvalidPolicies.skipped = append(skipInvalidPolicies.skipped, policy.GetName())
 					continue
 				}
 			}
@@ -297,12 +297,12 @@ func applyCommandHelper(resourcePaths []string, cluster bool, policyReport bool,
 		for _, resource := range resources {
 			thisPolicyResourceValues, err := common.CheckVariableForPolicy(valuesMap, globalValMap, policy.GetName(), resource.GetName(), resource.GetKind(), variables, kindOnwhichPolicyIsApplied, variable)
 			if err != nil {
-				return rc, resources, skipInvalidPolicies, pvInfos, sanitizederror.NewWithError(fmt.Sprintf("policy `%s` have variables. pass the values for the variables for resource `%s` using set/values_file flag", policy.Name, resource.GetName()), err)
+				return rc, resources, skipInvalidPolicies, pvInfos, sanitizederror.NewWithError(fmt.Sprintf("policy `%s` have variables. pass the values for the variables for resource `%s` using set/values_file flag", policy.GetName(), resource.GetName()), err)
 			}
 
 			_, info, err := common.ApplyPolicyOnResource(policy, resource, mutateLogPath, mutateLogPathIsDir, thisPolicyResourceValues, policyReport, namespaceSelectorMap, stdin, rc, true)
 			if err != nil {
-				return rc, resources, skipInvalidPolicies, pvInfos, sanitizederror.NewWithError(fmt.Errorf("failed to apply policy %v on resource %v", policy.Name, resource.GetName()).Error(), err)
+				return rc, resources, skipInvalidPolicies, pvInfos, sanitizederror.NewWithError(fmt.Errorf("failed to apply policy %v on resource %v", policy.GetName(), resource.GetName()).Error(), err)
 			}
 			pvInfos = append(pvInfos, info)
 

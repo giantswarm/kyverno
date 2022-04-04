@@ -16,9 +16,9 @@ import (
 	"github.com/kyverno/kyverno/pkg/engine/variables"
 	"github.com/pkg/errors"
 
+	wildcard "github.com/kyverno/go-wildcard"
 	"github.com/kyverno/kyverno/pkg/engine/wildcards"
 	"github.com/kyverno/kyverno/pkg/utils"
-	"github.com/minio/pkg/wildcard"
 	authenticationv1 "k8s.io/api/authentication/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apiextensions-apiserver/pkg/apis/apiextensions"
@@ -48,7 +48,7 @@ func checkKind(kinds []string, resource unstructured.Unstructured) bool {
 				return true
 			}
 		} else {
-			if resource.GroupVersionKind().Group == SplitGVK[0] && resource.GroupVersionKind().Kind == strings.Title(SplitGVK[2]) && (resource.GroupVersionKind().Version == SplitGVK[1] || resource.GroupVersionKind().Version == "*") {
+			if resource.GroupVersionKind().Group == SplitGVK[0] && resource.GroupVersionKind().Kind == strings.Title(SplitGVK[2]) && (resource.GroupVersionKind().Version == SplitGVK[1] || SplitGVK[1] == "*") {
 				return true
 			}
 		}
@@ -427,8 +427,8 @@ func excludeResource(podControllers string, resource unstructured.Unstructured) 
 // ManagedPodResource returns true:
 // - if the policy has auto-gen annotation && resource == Pod
 // - if the auto-gen contains cronJob && resource == Job
-func ManagedPodResource(policy kyverno.ClusterPolicy, resource unstructured.Unstructured) bool {
-	podControllers, ok := policy.GetAnnotations()[PodControllersAnnotation]
+func ManagedPodResource(policy kyverno.PolicyInterface, resource unstructured.Unstructured) bool {
+	podControllers, ok := policy.GetAnnotations()[kyverno.PodControllersAnnotation]
 	if !ok || strings.ToLower(podControllers) == "none" {
 		return false
 	}
@@ -493,4 +493,11 @@ func incrementAppliedCount(resp *response.EngineResponse) {
 
 func incrementErrorCount(resp *response.EngineResponse) {
 	resp.PolicyResponse.RulesErrorCount++
+}
+
+// invertedElement inverted the order of element for patchStrategicMerge  policies as kustomize patch revering the order of patch resources.
+func invertedElement(elements []interface{}) {
+	for i, j := 0, len(elements)-1; i < j; i, j = i+1, j-1 {
+		elements[i], elements[j] = elements[j], elements[i]
+	}
 }

@@ -9,9 +9,14 @@ curl -Lo $pwd/kind https://kind.sigs.k8s.io/dl/v0.11.0/kind-linux-amd64
 chmod a+x $pwd/kind
 
 ## Create Kind Cluster
-$pwd/kind create cluster
-$pwd/kind load docker-image ghcr.io/giantswarm/kyverno:$hash
-$pwd/kind load docker-image ghcr.io/giantswarm/kyvernopre:$hash
+if [ -z "${KIND_IMAGE}" ]; then
+    $pwd/kind create cluster
+else
+    $pwd/kind create cluster --image="${KIND_IMAGE}"
+fi
+
+$pwd/kind load docker-image ghcr.io/kyverno/kyverno:$hash
+$pwd/kind load docker-image ghcr.io/kyverno/kyvernopre:$hash
 
 pwd=$(pwd)
 cd $pwd/config
